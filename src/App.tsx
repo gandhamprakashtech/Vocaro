@@ -11,6 +11,7 @@ import Vocabulary from "./pages/Vocabulary.tsx";
 import Flashcards from "./pages/Flashcards.tsx";
 import WeeklyRecap from "./pages/WeeklyRecap.tsx";
 import Profile from "./pages/Profile.tsx";
+import Reminders from "./pages/Reminders.tsx";
 import { ROUTES } from "./utils/constants.ts";
 
 export default function App() {
@@ -37,6 +38,7 @@ export default function App() {
           <Route path={ROUTES.flashcards} element={<Flashcards />} />
           <Route path={ROUTES.weeklyRecap} element={<WeeklyRecap />} />
           <Route path={ROUTES.profile} element={<Profile />} />
+          <Route path={ROUTES.reminders} element={<Reminders />} />
         </Route>
       </Routes>
     </ErrorBoundary>

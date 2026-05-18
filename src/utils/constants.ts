@@ -28,4 +28,5 @@ export const ROUTES = {
   flashcards: "/flashcards",
   weeklyRecap: "/recap",
   profile: "/profile",
+  reminders: "/reminders",
 } as const;

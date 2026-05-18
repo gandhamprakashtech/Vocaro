@@ -7,9 +7,14 @@ import {
   Target,
   Sparkles,
   ArrowRight,
+  Brain,
+  Send,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { useVocabulary } from "../hooks/useVocabulary.ts";
+import { useReminders } from "../hooks/useReminders.ts";
+import { parseNaturalLanguage } from "../utils/nlpParser.ts";
+import { showToast } from "../components/Toast.tsx";
 import { ROUTES } from "../utils/constants.ts";
 import { getGreeting } from "../utils/helpers.ts";
 import { StatCard } from "../components/StatCard.tsx";
@@ -18,8 +23,10 @@ import { StatCard } from "../components/StatCard.tsx";
 export default function Dashboard() {
   const { user, profile } = useAuth();
   const { words, loading } = useVocabulary(user);
+  const { reminders, addReminder } = useReminders(user);
   const navigate = useNavigate();
   const [greeting, setGreeting] = useState(getGreeting);
+  const [quickReminderText, setQuickReminderText] = useState("");
 
   useEffect(() => {
     setGreeting(getGreeting());
@@ -32,6 +39,34 @@ export default function Dashboard() {
 
   const weakWords = words.filter((w) => w.memory_strength === "weak");
   const recentWords = words.slice(0, 5);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const todayPendingCount = reminders.filter(
+    (r) => r.reminder_date === todayStr && (r.status === "pending" || r.status === "snoozed")
+  ).length;
+
+  const handleQuickAdd = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickReminderText.trim()) return;
+
+    const parsed = parseNaturalLanguage(quickReminderText);
+    const { error: err } = await addReminder({
+      title: parsed.title,
+      description: "Created from dashboard quick add",
+      priority: parsed.priority,
+      reminder_date: parsed.date,
+      reminder_time: parsed.time,
+      notification_enabled: true,
+      repeat_type: "none",
+    });
+
+    if (err) {
+      showToast(`Failed to add reminder: ${err}`, "error");
+    } else {
+      showToast(`Added: "${parsed.title}" scheduled for ${parsed.date} at ${parsed.time}`, "success");
+      setQuickReminderText("");
+    }
+  };
 
   if (loading) {
     return (
@@ -101,6 +136,69 @@ export default function Dashboard() {
           sublabel="days"
           gradient="primary"
         />
+      </div>
+
+      {/* Memory Assistance Home Widget */}
+      <div className="glass rounded-2xl p-5 relative overflow-hidden animate-slide-up border border-white/10 dark:border-white/5">
+        <div className="absolute top-0 right-0 w-32 h-32 -translate-y-8 translate-x-8 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 opacity-10 blur-xl pointer-events-none" />
+        
+        <div className="flex items-center justify-between mb-3 relative z-10">
+          <div className="flex items-center gap-2">
+            <div className="w-8 h-8 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+              <Brain className="w-4.5 h-4.5" />
+            </div>
+            <h2 className="text-sm font-bold text-gray-900 dark:text-gray-100">
+              Memory Companion
+            </h2>
+          </div>
+          <button
+            onClick={() => navigate(ROUTES.reminders || "/reminders")}
+            className="text-xs text-indigo-600 dark:text-indigo-400 font-semibold hover:underline flex items-center gap-0.5"
+          >
+            Open Companion <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Dynamic Summary Block */}
+        <div className="mb-4 bg-gray-100/50 dark:bg-gray-900/35 rounded-xl p-3 border border-gray-200/10 relative z-10">
+          <p className="text-xs font-semibold text-gray-700 dark:text-gray-300">
+            {todayPendingCount > 0 ? (
+              <span>You have <strong className="text-indigo-600 dark:text-indigo-400 font-bold">{todayPendingCount} reminder{todayPendingCount > 1 ? "s" : ""}</strong> due today.</span>
+            ) : (
+              <span>Your mind is completely free right now! ✨</span>
+            )}
+          </p>
+          <p className="text-[10px] text-gray-400 dark:text-gray-500 mt-1 italic">
+            {todayPendingCount > 0 
+              ? "“Take things one step at a time. I am holding your tasks securely.”"
+              : "“All organized. Let's learn some new words!”"}
+          </p>
+        </div>
+
+        {/* Micro Quick Add Form */}
+        <form onSubmit={handleQuickAdd} className="flex gap-2 relative z-10">
+          <div className="relative flex-1">
+            <input
+              type="text"
+              value={quickReminderText}
+              onChange={(e) => setQuickReminderText(e.target.value)}
+              placeholder="e.g. Call Krishna sir at 6 PM..."
+              className="w-full h-10 px-3 pr-10 text-xs bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 rounded-xl focus:outline-none focus:border-indigo-500 dark:focus:border-indigo-400 text-gray-950 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-600 font-medium"
+            />
+            {quickReminderText && (
+              <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[9px] text-indigo-600 dark:text-indigo-400 font-bold bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded animate-fade-in">
+                {parseNaturalLanguage(quickReminderText).time}
+              </span>
+            )}
+          </div>
+          <button
+            type="submit"
+            disabled={!quickReminderText.trim()}
+            className="w-10 h-10 rounded-xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white flex items-center justify-center hover:shadow-lg hover:shadow-indigo-500/20 active:scale-95 disabled:opacity-50 disabled:hover:shadow-none disabled:active:scale-100 transition-all cursor-pointer"
+          >
+            <Send className="w-3.5 h-3.5" />
+          </button>
+        </form>
       </div>
 
       {/* Today's Word Card */}
