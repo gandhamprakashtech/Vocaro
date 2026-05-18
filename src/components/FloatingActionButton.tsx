@@ -1,9 +1,15 @@
 import { Plus } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { ROUTES } from "../utils/constants.ts";
 
 export function FloatingActionButton() {
   const navigate = useNavigate();
+  const location = useLocation();
+
+  // Hide the global Add Word FAB on pages that have their own FAB (like Reminders)
+  if (location.pathname === ROUTES.reminders) {
+    return null;
+  }
 
   return (
     <button
