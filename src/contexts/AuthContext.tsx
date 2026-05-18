@@ -69,11 +69,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch (err) {
         console.error("Error initializing auth session:", err);
       } finally {
-        if (active) setLoading(false);
+        setLoading(false);
       }
     }
 
-    initializeAuth();
+    // Failsafe timeout to prevent infinite loading screens
+    const failsafe = setTimeout(() => {
+      setLoading(false);
+    }, 5000);
+
+    initializeAuth().then(() => clearTimeout(failsafe));
 
     const {
       data: { subscription },
