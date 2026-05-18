@@ -48,13 +48,13 @@ export function useReminders(user: User | null): UseRemindersReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchReminders = useCallback(async () => {
-    if (!user) {
+  const fetchReminders = useCallback(async (silent = false) => {
+    if (!user?.id) {
       setReminders([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError(null);
     try {
       const { data, error: err } = await supabase
@@ -89,9 +89,9 @@ export function useReminders(user: User | null): UseRemindersReturn {
     } catch (e: any) {
       setError(e.message || "An unexpected error occurred");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
-  }, [user]);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchReminders();
@@ -100,7 +100,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
   const addReminder = async (
     reminderData: Omit<Reminder, "id" | "user_id" | "created_at" | "status"> & { status?: Reminder["status"] }
   ): Promise<{ data: Reminder | null; error: string | null }> => {
-    if (!user) return { data: null, error: "Not authenticated" };
+    if (!user?.id) return { data: null, error: "Not authenticated" };
     try {
       const { data, error: err } = await supabase
         .from("reminders")
@@ -115,7 +115,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
         .single();
 
       if (err) return { data: null, error: err.message };
-      await fetchReminders();
+      await fetchReminders(true);
       return { data: data as Reminder, error: null };
     } catch (e: any) {
       return { data: null, error: e.message || "Insert failed" };
@@ -133,7 +133,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
         .eq("id", id);
 
       if (err) return err.message;
-      await fetchReminders();
+      await fetchReminders(true);
       return null;
     } catch (e: any) {
       return e.message || "Update failed";
@@ -148,7 +148,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
         .eq("id", id);
 
       if (err) return err.message;
-      await fetchReminders();
+      await fetchReminders(true);
       return null;
     } catch (e: any) {
       return e.message || "Delete failed";

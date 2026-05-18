@@ -36,13 +36,13 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchWords = useCallback(async () => {
-    if (!user) {
+  const fetchWords = useCallback(async (silent = false) => {
+    if (!user?.id) {
       setWords([]);
       setLoading(false);
       return;
     }
-    setLoading(true);
+    if (!silent) setLoading(true);
     const { data, error: err } = await supabase
       .from("vocabulary")
       .select("*")
@@ -53,8 +53,8 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
     } else {
       setWords(data as VocabularyWord[]);
     }
-    setLoading(false);
-  }, [user]);
+    if (!silent) setLoading(false);
+  }, [user?.id]);
 
   useEffect(() => {
     fetchWords();
@@ -72,7 +72,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
       | "favorite"
     >
   ): Promise<string | null> => {
-    if (!user) return "Not authenticated";
+    if (!user?.id) return "Not authenticated";
     const { error: err } = await supabase.from("vocabulary").insert([
       {
         ...wordData,
@@ -83,7 +83,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
       },
     ]);
     if (err) return err.message;
-    await fetchWords();
+    await fetchWords(true);
     return null;
   };
 
@@ -96,7 +96,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
       .update(updates)
       .eq("id", id);
     if (err) return err.message;
-    await fetchWords();
+    await fetchWords(true);
     return null;
   };
 
@@ -106,7 +106,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
       .delete()
       .eq("id", id);
     if (err) return err.message;
-    await fetchWords();
+    await fetchWords(true);
     return null;
   };
 
