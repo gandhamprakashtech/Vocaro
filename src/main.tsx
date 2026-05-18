@@ -20,3 +20,14 @@ createRoot(document.getElementById("app")!).render(
     </BrowserRouter>
   </StrictMode>
 );
+
+// Auto-reload the application when a new PWA version is pushed
+if ("serviceWorker" in navigator) {
+  let refreshing = false;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (!refreshing) {
+      refreshing = true;
+      window.location.reload();
+    }
+  });
+}
