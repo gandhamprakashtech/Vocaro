@@ -21,9 +21,9 @@ import { ROUTES } from "../utils/constants.ts";
 import { showToast } from "../components/Toast.tsx";
 
 export default function Profile() {
-  const { user, profile, signOut } = useAuth();
+  const { user, profile, signOut, loading: authLoading } = useAuth();
   const { dark, toggle } = useTheme();
-  const { words } = useVocabulary(user);
+  const { words, loading: wordsLoading } = useVocabulary(user);
   const { permission, requestPermission, scheduleDailyReminder } =
     useNotifications();
   const navigate = useNavigate();
@@ -61,8 +61,16 @@ export default function Profile() {
 
   const handleLogout = async () => {
     await signOut();
-    navigate(ROUTES.login);
+    navigate(ROUTES.login, { replace: true });
   };
+
+  if (authLoading || wordsLoading) {
+    return (
+      <div className="min-h-[60vh] flex items-center justify-center">
+        <div className="w-8 h-8 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 animate-fade-in">

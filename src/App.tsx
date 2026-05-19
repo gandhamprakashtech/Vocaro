@@ -1,4 +1,4 @@
-import { Routes, Route } from "react-router-dom";
+import { Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { ProtectedRoute } from "./components/ProtectedRoute.tsx";
 import { AuthLayout } from "./layouts/AuthLayout.tsx";
@@ -33,6 +33,10 @@ export default function App() {
           }
         >
           <Route path={ROUTES.dashboard} element={<Dashboard />} />
+          <Route
+            path="/dashboard"
+            element={<Navigate to={ROUTES.dashboard} replace />}
+          />
           <Route path={ROUTES.addWord} element={<AddWord />} />
           <Route path={ROUTES.vocabulary} element={<Vocabulary />} />
           <Route path={ROUTES.flashcards} element={<Flashcards />} />
@@ -40,6 +44,8 @@ export default function App() {
           <Route path={ROUTES.profile} element={<Profile />} />
           <Route path={ROUTES.reminders} element={<Reminders />} />
         </Route>
+
+        <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />
       </Routes>
     </ErrorBoundary>
   );
