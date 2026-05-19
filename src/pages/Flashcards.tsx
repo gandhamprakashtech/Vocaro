@@ -44,19 +44,19 @@ export default function Flashcards() {
     setTimeout(() => setAnimating(false), 400);
   };
 
-  const handleNext = () => {
+  const handleNext = useCallback(() => {
     if (currentIndex < reviewWords.length - 1) {
       setFlipped(false);
       setCurrentIndex(currentIndex + 1);
     }
-  };
+  }, [currentIndex, reviewWords.length]);
 
-  const handlePrev = () => {
+  const handlePrev = useCallback(() => {
     if (currentIndex > 0) {
       setFlipped(false);
       setCurrentIndex(currentIndex - 1);
     }
-  };
+  }, [currentIndex]);
 
   const handleMark = useCallback(
     async (strength: "strong" | "medium" | "weak") => {

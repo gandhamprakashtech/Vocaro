@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Mail, Lock, Eye, EyeOff, Loader2 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { ROUTES } from "../utils/constants.ts";
@@ -12,6 +12,17 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const { signIn, signInWithGoogle } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+
+  const redirectTo = (() => {
+    const state = location.state as
+      | { from?: { pathname?: string } | string }
+      | null;
+    if (!state?.from) return ROUTES.dashboard;
+    return typeof state.from === "string"
+      ? state.from
+      : state.from.pathname || ROUTES.dashboard;
+  })();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +32,7 @@ export default function Login() {
     if (err) {
       showToast(err, "error");
     } else {
-      navigate(ROUTES.dashboard);
+      navigate(redirectTo, { replace: true });
     }
   };
 
