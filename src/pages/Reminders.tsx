@@ -24,6 +24,7 @@ import {
   ChevronRight,
   BellRing,
 } from "lucide-react";
+import { RemindersSkeleton } from "../components/skeletons/RemindersSkeleton.tsx";
 
 export default function Reminders() {
   const { user } = useAuth();
@@ -382,15 +383,7 @@ export default function Reminders() {
       {/* Main Tab Content */}
       <div className="space-y-6">
         {loading ? (
-          /* Loading Skeletons */
-          <div className="space-y-3">
-            {Array.from({ length: 3 }).map((_, i) => (
-              <div
-                key={i}
-                className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-900 animate-pulse border border-gray-200/10"
-              />
-            ))}
-          </div>
+          <RemindersSkeleton count={3} />
         ) : reminders.length === 0 ? (
           /* Empty State */
           <div className="glass rounded-3xl p-8 text-center space-y-4 border border-gray-200/10">

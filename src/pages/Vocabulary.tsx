@@ -1,4 +1,8 @@
 import { useState } from "react";
+import {
+  useWindowVirtualizer,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -12,7 +16,7 @@ import type { VocabularyWord } from "../hooks/useVocabulary.ts";
 import { ROUTES } from "../utils/constants.ts";
 import { showToast } from "../components/Toast.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
-import { LoadingSkeleton } from "../components/LoadingSkeleton.tsx";
+import { VocabularySkeleton } from "../components/skeletons/VocabularySkeleton.tsx";
 import { WordCard } from "../components/WordCard.tsx";
 
 type FilterType = "recent" | "strong" | "weak" | "favorites";
@@ -40,6 +44,13 @@ export default function Vocabulary() {
   const filtered = searchQuery.trim()
     ? searchWords(searchQuery)
     : filterWords(activeFilter);
+
+  const shouldVirtualize = filtered.length > 80;
+  const virtualizer = useWindowVirtualizer({
+    count: shouldVirtualize ? filtered.length : 0,
+    estimateSize: () => 140,
+    overscan: 6,
+  });
 
   const handleDelete = async (id: string) => {
     const err = await deleteWord(id);
@@ -139,7 +150,7 @@ export default function Vocabulary() {
 
       {/* Word List */}
       {loading ? (
-        <LoadingSkeleton count={4} />
+        <VocabularySkeleton count={4} />
       ) : filtered.length === 0 ? (
         <EmptyState
           title={
@@ -153,12 +164,43 @@ export default function Vocabulary() {
               : "Start by adding your first word!"
           }
         />
+      ) : shouldVirtualize ? (
+        <div
+          className="relative"
+          style={{ height: `${virtualizer.getTotalSize()}px` }}
+        >
+          {virtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
+            const word = filtered[virtualRow.index];
+            return (
+              <div
+                key={word.id}
+                ref={virtualizer.measureElement}
+                data-index={virtualRow.index}
+                className="pb-3"
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
+              >
+                <WordCard
+                  word={word}
+                  onEdit={openEdit}
+                  onDelete={handleDelete}
+                  onFavorite={toggleFavorite}
+                />
+              </div>
+            );
+          })}
+        </div>
       ) : (
         <div className="space-y-3">
           {filtered.map((word, i) => (
             <div
               key={word.id}
-              className="animate-slide-up"
+              className="animate-slide-up content-visibility-auto"
               style={{ animationDelay: `${i * 50}ms` }}
             >
               <WordCard

@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { type LucideIcon } from "lucide-react";
 
 interface StatCardProps {
@@ -8,7 +9,7 @@ interface StatCardProps {
   gradient?: "primary" | "warm" | "cool";
 }
 
-export function StatCard({
+function StatCardBase({
   icon: Icon,
   label,
   value,
@@ -47,3 +48,5 @@ export function StatCard({
     </div>
   );
 }
+
+export const StatCard = memo(StatCardBase);

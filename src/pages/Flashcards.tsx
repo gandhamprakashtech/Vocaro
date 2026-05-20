@@ -8,7 +8,6 @@ import {
   Brain,
   ThumbsUp,
   AlertTriangle,
-  Loader2,
 } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext.tsx";
 import { useVocabulary } from "../hooks/useVocabulary.ts";
@@ -16,6 +15,8 @@ import type { VocabularyWord } from "../hooks/useVocabulary.ts";
 import { ROUTES } from "../utils/constants.ts";
 import { showToast } from "../components/Toast.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { FlashcardsSkeleton } from "../components/skeletons/FlashcardsSkeleton.tsx";
+import { readCache, writeCache } from "../services/localDb.ts";
 
 export default function Flashcards() {
   const { user } = useAuth();
@@ -27,6 +28,8 @@ export default function Flashcards() {
   const [flipped, setFlipped] = useState(false);
   const [animating, setAnimating] = useState(false);
 
+  const cacheKey = user?.id ? `flashcards:${user.id}` : "";
+
   useEffect(() => {
     const sorted = [...words].sort((a, b) => {
       const order = { weak: 0, medium: 1, strong: 2 };
@@ -34,6 +37,20 @@ export default function Flashcards() {
     });
     setReviewWords(sorted);
   }, [words]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    readCache<VocabularyWord[]>(cacheKey).then((cached) => {
+      if (!cached || words.length > 0) return;
+      setReviewWords(cached);
+    });
+  }, [cacheKey, user?.id, words.length]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (reviewWords.length === 0) return;
+    writeCache(cacheKey, reviewWords.slice(0, 20));
+  }, [cacheKey, reviewWords, user?.id]);
 
   const current = reviewWords[currentIndex];
 
@@ -91,11 +108,7 @@ export default function Flashcards() {
   );
 
   if (loading) {
-    return (
-      <div className="min-h-[60vh] flex items-center justify-center">
-        <Loader2 className="w-8 h-8 text-indigo-500 animate-spin" />
-      </div>
-    );
+    return <FlashcardsSkeleton />;
   }
 
   if (reviewWords.length === 0) {

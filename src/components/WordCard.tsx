@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { Heart, Pencil, Trash2 } from "lucide-react";
 import type { VocabularyWord } from "../hooks/useVocabulary.ts";
 import { formatDate, classNames } from "../utils/helpers.ts";
@@ -16,7 +17,7 @@ const strengthColors = {
   weak: "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300",
 };
 
-export function WordCard({ word, onEdit, onDelete, onFavorite }: WordCardProps) {
+function WordCardBase({ word, onEdit, onDelete, onFavorite }: WordCardProps) {
   return (
     <div className="glass rounded-2xl p-4 animate-scale-in group hover:shadow-md transition-all duration-300">
       <div className="flex items-start justify-between mb-2">
@@ -96,3 +97,5 @@ export function WordCard({ word, onEdit, onDelete, onFavorite }: WordCardProps) 
     </div>
   );
 }
+
+export const WordCard = memo(WordCardBase);

@@ -2,8 +2,11 @@ import { Outlet } from "react-router-dom";
 import { Navbar } from "../components/Navbar.tsx";
 import { FloatingActionButton } from "../components/FloatingActionButton.tsx";
 import { Toast } from "../components/Toast.tsx";
+import { useOfflineSync } from "../hooks/useOfflineSync.ts";
 
 export function AppLayout() {
+  useOfflineSync();
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 pb-20">
       <Toast />

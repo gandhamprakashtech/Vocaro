@@ -1,6 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import { supabase } from "../services/supabase.ts";
+import { useCallback, useEffect, useMemo } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
+import { supabase } from "../services/supabase.ts";
+import { queryClient } from "../lib/queryClient.ts";
+import { readCache, writeCache } from "../services/localDb.ts";
+import { enqueueAction } from "../services/offlineQueue.ts";
+import { createId } from "../utils/id.ts";
 
 export interface Reminder {
   id: string;
@@ -44,81 +49,287 @@ interface UseRemindersReturn {
 }
 
 export function useReminders(user: User | null): UseRemindersReturn {
-  const [reminders, setReminders] = useState<Reminder[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  type AddPayload = {
+    data: Omit<Reminder, "id" | "user_id" | "created_at" | "status"> & {
+      status?: Reminder["status"];
+    };
+    clientId: string;
+    createdAt: string;
+  };
 
-  const fetchReminders = useCallback(async (silent = false) => {
-    if (!user?.id) {
-      setReminders([]);
-      setLoading(false);
-      return;
-    }
-    if (!silent) setLoading(true);
-    setError(null);
-    try {
-      const { data, error: err } = await supabase
-        .from("reminders")
-        .select("*")
-        .eq("user_id", user.id)
-        .order("reminder_date", { ascending: true })
-        .order("reminder_time", { ascending: true });
+  type UpdatePayload = { id: string; updates: Partial<Reminder> };
+  type DeletePayload = { id: string };
+  type MutationContext = { previous: Reminder[] };
 
-      if (err) {
-        setError(err.message);
-      } else {
-        // Automatically check and transition past pending/snoozed reminders to missed status
-        const now = new Date();
-        const updatedData = (data as Reminder[]).map((r) => {
-          if ((r.status === "pending" || r.status === "snoozed")) {
-            const reminderDateTime = new Date(`${r.reminder_date}T${r.reminder_time}`);
-            if (reminderDateTime < now) {
-              r.status = "missed";
-              // We'll update the database asynchronously
-              supabase
-                .from("reminders")
-                .update({ status: "missed" })
-                .eq("id", r.id)
-                .then();
-            }
-          }
-          return r;
-        });
-        setReminders(updatedData);
+  const queryKey = useMemo(() => ["reminders", user?.id], [user?.id]);
+  const cacheKey = user?.id ? `reminders:${user.id}` : "";
+
+  const normalizeReminders = useCallback((data: Reminder[]): Reminder[] => {
+    const now = new Date();
+    return data.map((r) => {
+      if (r.status === "pending" || r.status === "snoozed") {
+        const reminderDateTime = new Date(
+          `${r.reminder_date}T${r.reminder_time}`
+        );
+        if (reminderDateTime < now) {
+          void supabase
+            .from("reminders")
+            .update({ status: "missed" })
+            .eq("id", r.id);
+          return { ...r, status: "missed" };
+        }
       }
-    } catch (e: any) {
-      setError(e.message || "An unexpected error occurred");
-    } finally {
-      if (!silent) setLoading(false);
-    }
-  }, [user?.id]);
+      return r;
+    });
+  }, []);
+
+  const fetchReminders = useCallback(async (): Promise<Reminder[]> => {
+    if (!user?.id) return [] as Reminder[];
+    const { data, error: err } = await supabase
+      .from("reminders")
+      .select("*")
+      .eq("user_id", user.id)
+      .order("reminder_date", { ascending: true })
+      .order("reminder_time", { ascending: true });
+
+    if (err) throw err;
+    return normalizeReminders((data || []) as Reminder[]);
+  }, [normalizeReminders, user?.id]);
+
+  const {
+    data: reminders = [],
+    isPending,
+    error,
+  } = useQuery<Reminder[], Error>({
+    queryKey,
+    queryFn: fetchReminders,
+    enabled: !!user?.id,
+  });
 
   useEffect(() => {
-    fetchReminders();
-  }, [fetchReminders]);
+    if (!user?.id) return;
+    let active = true;
+    readCache<Reminder[]>(cacheKey).then((cached) => {
+      if (!active || !cached) return;
+      queryClient.setQueryData(queryKey, cached);
+    });
+    return () => {
+      active = false;
+    };
+  }, [cacheKey, queryKey, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    writeCache(cacheKey, reminders);
+  }, [cacheKey, reminders, user?.id]);
+
+  const addMutation = useMutation<
+    { offline: boolean; record: Reminder },
+    Error,
+    AddPayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
+      if (!user?.id) throw new Error("Not authenticated");
+
+      const resolvedStatus: Reminder["status"] =
+        payload.data.status ?? "pending";
+
+      const record: Reminder = {
+        id: payload.clientId,
+        user_id: user.id,
+        title: payload.data.title,
+        description: payload.data.description ?? null,
+        priority: payload.data.priority,
+        reminder_date: payload.data.reminder_date,
+        reminder_time: payload.data.reminder_time,
+        notification_enabled: payload.data.notification_enabled,
+        repeat_type: payload.data.repeat_type,
+        status: resolvedStatus,
+        created_at: payload.createdAt,
+      };
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await enqueueAction({ type: "reminders:add", payload: record });
+        return { offline: true, record };
+      }
+
+      const { error: err } = await supabase.from("reminders").insert([record]);
+      if (err) throw err;
+      return { offline: false, record };
+    },
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous =
+        (queryClient.getQueryData<Reminder[]>(queryKey) as
+          | Reminder[]
+          | undefined) || [];
+
+      const optimisticStatus: Reminder["status"] =
+        payload.data.status ?? "pending";
+
+      const optimistic: Reminder = {
+        id: payload.clientId,
+        user_id: user?.id || "",
+        title: payload.data.title,
+        description: payload.data.description ?? null,
+        priority: payload.data.priority,
+        reminder_date: payload.data.reminder_date,
+        reminder_time: payload.data.reminder_time,
+        notification_enabled: payload.data.notification_enabled,
+        repeat_type: payload.data.repeat_type,
+        status: optimisticStatus,
+        created_at: payload.createdAt,
+      };
+
+      const next = [...previous, optimistic].sort((a, b) => {
+        const timeA = new Date(
+          `${a.reminder_date}T${a.reminder_time}`
+        ).getTime();
+        const timeB = new Date(
+          `${b.reminder_date}T${b.reminder_time}`
+        ).getTime();
+        return timeA - timeB;
+      });
+
+      queryClient.setQueryData(queryKey, next);
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (ctx?.previous) {
+        queryClient.setQueryData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const updateMutation = useMutation<
+    { offline: boolean },
+    Error,
+    UpdatePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await enqueueAction({ type: "reminders:update", payload });
+        return { offline: true };
+      }
+      const { error: err } = await supabase
+        .from("reminders")
+        .update(payload.updates)
+        .eq("id", payload.id);
+      if (err) throw err;
+      return { offline: false };
+    },
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous =
+        (queryClient.getQueryData<Reminder[]>(queryKey) as
+          | Reminder[]
+          | undefined) || [];
+
+      const next = previous.map((reminder) =>
+        reminder.id === payload.id
+          ? { ...reminder, ...payload.updates }
+          : reminder
+      );
+
+      queryClient.setQueryData(queryKey, next);
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (ctx?.previous) {
+        queryClient.setQueryData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
+
+  const deleteMutation = useMutation<
+    { offline: boolean },
+    Error,
+    DeletePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await enqueueAction({ type: "reminders:delete", payload });
+        return { offline: true };
+      }
+      const { error: err } = await supabase
+        .from("reminders")
+        .delete()
+        .eq("id", payload.id);
+      if (err) throw err;
+      return { offline: false };
+    },
+    onMutate: async (payload) => {
+      await queryClient.cancelQueries({ queryKey });
+      const previous =
+        (queryClient.getQueryData<Reminder[]>(queryKey) as
+          | Reminder[]
+          | undefined) || [];
+      queryClient.setQueryData(
+        queryKey,
+        previous.filter((reminder) => reminder.id !== payload.id)
+      );
+      return { previous };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      if (ctx?.previous) {
+        queryClient.setQueryData(queryKey, ctx.previous);
+      }
+    },
+    onSettled: () => {
+      if (typeof navigator !== "undefined" && !navigator.onLine) return;
+      queryClient.invalidateQueries({ queryKey });
+    },
+  });
 
   const addReminder = async (
     reminderData: Omit<Reminder, "id" | "user_id" | "created_at" | "status"> & { status?: Reminder["status"] }
   ): Promise<{ data: Reminder | null; error: string | null }> => {
     if (!user?.id) return { data: null, error: "Not authenticated" };
+    const clientId = createId();
+    const createdAt = new Date().toISOString();
+    const resolvedStatus: Reminder["status"] =
+      reminderData.status ?? "pending";
     try {
-      const { data, error: err } = await supabase
-        .from("reminders")
-        .insert([
-          {
-            ...reminderData,
-            user_id: user.id,
-            status: reminderData.status || "pending",
-          },
-        ])
-        .select()
-        .single();
-
-      if (err) return { data: null, error: err.message };
-      await fetchReminders(true);
-      return { data: data as Reminder, error: null };
-    } catch (e: any) {
-      return { data: null, error: e.message || "Insert failed" };
+      await addMutation.mutateAsync({
+        data: reminderData,
+        clientId,
+        createdAt,
+      });
+      return {
+        data: {
+          id: clientId,
+          user_id: user.id,
+          title: reminderData.title,
+          description: reminderData.description ?? null,
+          priority: reminderData.priority,
+          reminder_date: reminderData.reminder_date,
+          reminder_time: reminderData.reminder_time,
+          notification_enabled: reminderData.notification_enabled,
+          repeat_type: reminderData.repeat_type,
+          status: resolvedStatus,
+          created_at: createdAt,
+        },
+        error: null,
+      };
+    } catch (e: unknown) {
+      return {
+        data: null,
+        error: e instanceof Error ? e.message : "Insert failed",
+      };
     }
   };
 
@@ -127,31 +338,19 @@ export function useReminders(user: User | null): UseRemindersReturn {
     updates: Partial<Reminder>
   ): Promise<string | null> => {
     try {
-      const { error: err } = await supabase
-        .from("reminders")
-        .update(updates)
-        .eq("id", id);
-
-      if (err) return err.message;
-      await fetchReminders(true);
+      await updateMutation.mutateAsync({ id, updates });
       return null;
-    } catch (e: any) {
-      return e.message || "Update failed";
+    } catch (e: unknown) {
+      return e instanceof Error ? e.message : "Update failed";
     }
   };
 
   const deleteReminder = async (id: string): Promise<string | null> => {
     try {
-      const { error: err } = await supabase
-        .from("reminders")
-        .delete()
-        .eq("id", id);
-
-      if (err) return err.message;
-      await fetchReminders(true);
+      await deleteMutation.mutateAsync({ id });
       return null;
-    } catch (e: any) {
-      return e.message || "Delete failed";
+    } catch (e: unknown) {
+      return e instanceof Error ? e.message : "Delete failed";
     }
   };
 
@@ -200,7 +399,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
     });
   };
 
-  const getAnalytics = (): ReminderAnalytics => {
+  const getAnalytics = useCallback((): ReminderAnalytics => {
     const total = reminders.length;
     const completed = reminders.filter((r) => r.status === "completed").length;
     const pending = reminders.filter((r) => r.status === "pending").length;
@@ -211,7 +410,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     // Calculate Streak (completed consecutive days)
-    const completedDates = [
+    const completedDates: string[] = [
       ...new Set(
         reminders
           .filter((r) => r.status === "completed")
@@ -267,18 +466,20 @@ export function useReminders(user: User | null): UseRemindersReturn {
       streak,
       weeklyStats,
     };
-  };
+  }, [reminders]);
 
   return {
     reminders,
-    loading,
-    error,
+    loading: isPending,
+    error: error instanceof Error ? error.message : null,
     addReminder,
     updateReminder,
     deleteReminder,
     completeReminder,
     snoozeReminder,
     getAnalytics,
-    refresh: fetchReminders,
+    refresh: async () => {
+      await queryClient.invalidateQueries({ queryKey });
+    },
   };
 }

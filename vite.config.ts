@@ -53,4 +53,27 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes("node_modules")) return undefined;
+          if (id.includes("react-dom") || id.includes("react")) return "react";
+          if (id.includes("react-router")) return "router";
+          if (id.includes("@supabase/supabase-js")) return "supabase";
+          if (id.includes("recharts")) return "charts";
+          if (id.includes("jspdf")) return "pdf";
+          if (id.includes("lucide-react")) return "icons";
+          if (
+            id.includes("@tanstack/react-query") ||
+            id.includes("@tanstack/react-virtual") ||
+            id.includes("dexie")
+          ) {
+            return "data";
+          }
+          return "vendor";
+        },
+      },
+    },
+  },
 });
