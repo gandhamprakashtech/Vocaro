@@ -53,4 +53,19 @@ export default defineConfig({
       },
     }),
   ],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          react: ["react", "react-dom"],
+          router: ["react-router-dom"],
+          supabase: ["@supabase/supabase-js"],
+          charts: ["recharts"],
+          pdf: ["jspdf"],
+          icons: ["lucide-react"],
+          data: ["@tanstack/react-query", "@tanstack/react-virtual", "dexie"],
+        },
+      },
+    },
+  },
 });

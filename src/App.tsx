@@ -1,3 +1,9 @@
+import {
+  Suspense,
+  lazy,
+  type ComponentType,
+  type LazyExoticComponent,
+} from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { ErrorBoundary } from "./components/ErrorBoundary.tsx";
 import { ProtectedRoute } from "./components/ProtectedRoute.tsx";
@@ -5,14 +11,29 @@ import { AuthLayout } from "./layouts/AuthLayout.tsx";
 import { AppLayout } from "./layouts/AppLayout.tsx";
 import Login from "./pages/Login.tsx";
 import Signup from "./pages/Signup.tsx";
-import Dashboard from "./pages/Dashboard.tsx";
 import AddWord from "./pages/AddWord.tsx";
-import Vocabulary from "./pages/Vocabulary.tsx";
-import Flashcards from "./pages/Flashcards.tsx";
-import WeeklyRecap from "./pages/WeeklyRecap.tsx";
-import Profile from "./pages/Profile.tsx";
-import Reminders from "./pages/Reminders.tsx";
+import { RouteBoundary } from "./components/RouteBoundary.tsx";
+import { RouteLoader } from "./components/RouteLoader.tsx";
 import { ROUTES } from "./utils/constants.ts";
+
+const Dashboard = lazy(() => import("./pages/Dashboard.tsx"));
+const Vocabulary = lazy(() => import("./pages/Vocabulary.tsx"));
+const Flashcards = lazy(() => import("./pages/Flashcards.tsx"));
+const WeeklyRecap = lazy(() => import("./pages/WeeklyRecap.tsx"));
+const Profile = lazy(() => import("./pages/Profile.tsx"));
+const Reminders = lazy(() => import("./pages/Reminders.tsx"));
+
+function lazyElement(
+  Element: LazyExoticComponent<ComponentType>
+): JSX.Element {
+  return (
+    <RouteBoundary>
+      <Suspense fallback={<RouteLoader />}>
+        <Element />
+      </Suspense>
+    </RouteBoundary>
+  );
+}
 
 export default function App() {
   return (
@@ -20,8 +41,22 @@ export default function App() {
       <Routes>
         {/* Auth Routes */}
         <Route element={<AuthLayout />}>
-          <Route path={ROUTES.login} element={<Login />} />
-          <Route path={ROUTES.signup} element={<Signup />} />
+          <Route
+            path={ROUTES.login}
+            element={
+              <RouteBoundary>
+                <Login />
+              </RouteBoundary>
+            }
+          />
+          <Route
+            path={ROUTES.signup}
+            element={
+              <RouteBoundary>
+                <Signup />
+              </RouteBoundary>
+            }
+          />
         </Route>
 
         {/* App Routes */}
@@ -32,17 +67,24 @@ export default function App() {
             </ProtectedRoute>
           }
         >
-          <Route path={ROUTES.dashboard} element={<Dashboard />} />
+          <Route path={ROUTES.dashboard} element={lazyElement(Dashboard)} />
           <Route
             path="/dashboard"
             element={<Navigate to={ROUTES.dashboard} replace />}
           />
-          <Route path={ROUTES.addWord} element={<AddWord />} />
-          <Route path={ROUTES.vocabulary} element={<Vocabulary />} />
-          <Route path={ROUTES.flashcards} element={<Flashcards />} />
-          <Route path={ROUTES.weeklyRecap} element={<WeeklyRecap />} />
-          <Route path={ROUTES.profile} element={<Profile />} />
-          <Route path={ROUTES.reminders} element={<Reminders />} />
+          <Route
+            path={ROUTES.addWord}
+            element={
+              <RouteBoundary>
+                <AddWord />
+              </RouteBoundary>
+            }
+          />
+          <Route path={ROUTES.vocabulary} element={lazyElement(Vocabulary)} />
+          <Route path={ROUTES.flashcards} element={lazyElement(Flashcards)} />
+          <Route path={ROUTES.weeklyRecap} element={lazyElement(WeeklyRecap)} />
+          <Route path={ROUTES.profile} element={lazyElement(Profile)} />
+          <Route path={ROUTES.reminders} element={lazyElement(Reminders)} />
         </Route>
 
         <Route path="*" element={<Navigate to={ROUTES.dashboard} replace />} />

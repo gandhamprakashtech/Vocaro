@@ -14,6 +14,7 @@ import { useWeeklyRecap } from "../hooks/useWeeklyRecap.ts";
 import { ROUTES } from "../utils/constants.ts";
 import { StatCard } from "../components/StatCard.tsx";
 import { EmptyState } from "../components/EmptyState.tsx";
+import { RecapSkeleton } from "../components/skeletons/RecapSkeleton.tsx";
 
 export default function WeeklyRecap() {
   const { user } = useAuth();
@@ -22,16 +23,7 @@ export default function WeeklyRecap() {
   const navigate = useNavigate();
 
   if (loading) {
-    return (
-      <div className="space-y-4 animate-fade-in">
-        {[1, 2, 3].map((i) => (
-          <div
-            key={i}
-            className="h-24 rounded-2xl bg-gray-100 dark:bg-gray-800 animate-pulse"
-          />
-        ))}
-      </div>
-    );
+    return <RecapSkeleton />;
   }
 
   if (recap.totalWords === 0) {
