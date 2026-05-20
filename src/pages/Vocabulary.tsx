@@ -1,5 +1,8 @@
 import { useState } from "react";
-import { useWindowVirtualizer } from "@tanstack/react-virtual";
+import {
+  useWindowVirtualizer,
+  type VirtualItem,
+} from "@tanstack/react-virtual";
 import { useNavigate } from "react-router-dom";
 import {
   Search,
@@ -166,7 +169,7 @@ export default function Vocabulary() {
           className="relative"
           style={{ height: `${virtualizer.getTotalSize()}px` }}
         >
-          {virtualizer.getVirtualItems().map((virtualRow) => {
+          {virtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
             const word = filtered[virtualRow.index];
             return (
               <div

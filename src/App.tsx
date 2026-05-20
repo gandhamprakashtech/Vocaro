@@ -23,9 +23,7 @@ const WeeklyRecap = lazy(() => import("./pages/WeeklyRecap.tsx"));
 const Profile = lazy(() => import("./pages/Profile.tsx"));
 const Reminders = lazy(() => import("./pages/Reminders.tsx"));
 
-function lazyElement(
-  Element: LazyExoticComponent<ComponentType>
-): JSX.Element {
+function lazyElement(Element: LazyExoticComponent<ComponentType>) {
   return (
     <RouteBoundary>
       <Suspense fallback={<RouteLoader />}>

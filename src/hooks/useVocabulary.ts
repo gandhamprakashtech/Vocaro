@@ -37,6 +37,25 @@ interface UseVocabularyReturn {
 }
 
 export function useVocabulary(user: User | null): UseVocabularyReturn {
+  type AddPayload = {
+    data: Omit<
+      VocabularyWord,
+      | "id"
+      | "user_id"
+      | "created_at"
+      | "revision_count"
+      | "next_revision_date"
+      | "memory_strength"
+      | "favorite"
+    >;
+    clientId: string;
+    createdAt: string;
+  };
+
+  type UpdatePayload = { id: string; updates: Partial<VocabularyWord> };
+  type DeletePayload = { id: string };
+  type MutationContext = { previous: VocabularyWord[] };
+
   const queryKey = useMemo(() => ["vocabulary", user?.id], [user?.id]);
   const cacheKey = user?.id ? `vocabulary:${user.id}` : "";
 
@@ -55,7 +74,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
     data: words = [],
     isPending,
     error,
-  } = useQuery({
+  } = useQuery<VocabularyWord[], Error>({
     queryKey,
     queryFn: fetchWords,
     enabled: !!user?.id,
@@ -78,21 +97,13 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
     writeCache(cacheKey, words);
   }, [cacheKey, user?.id, words]);
 
-  const addMutation = useMutation({
-    mutationFn: async (payload: {
-      data: Omit<
-        VocabularyWord,
-        | "id"
-        | "user_id"
-        | "created_at"
-        | "revision_count"
-        | "next_revision_date"
-        | "memory_strength"
-        | "favorite"
-      >;
-      clientId: string;
-      createdAt: string;
-    }) => {
+  const addMutation = useMutation<
+    { offline: boolean },
+    Error,
+    AddPayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (!user?.id) throw new Error("Not authenticated");
 
       const record: VocabularyWord = {
@@ -154,11 +165,13 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (payload: {
-      id: string;
-      updates: Partial<VocabularyWord>;
-    }) => {
+  const updateMutation = useMutation<
+    { offline: boolean },
+    Error,
+    UpdatePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await enqueueAction({ type: "vocabulary:update", payload });
         return { offline: true };
@@ -196,8 +209,13 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (payload: { id: string }) => {
+  const deleteMutation = useMutation<
+    { offline: boolean },
+    Error,
+    DeletePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await enqueueAction({ type: "vocabulary:delete", payload });
         return { offline: true };

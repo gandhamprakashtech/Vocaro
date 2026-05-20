@@ -49,10 +49,22 @@ interface UseRemindersReturn {
 }
 
 export function useReminders(user: User | null): UseRemindersReturn {
+  type AddPayload = {
+    data: Omit<Reminder, "id" | "user_id" | "created_at" | "status"> & {
+      status?: Reminder["status"];
+    };
+    clientId: string;
+    createdAt: string;
+  };
+
+  type UpdatePayload = { id: string; updates: Partial<Reminder> };
+  type DeletePayload = { id: string };
+  type MutationContext = { previous: Reminder[] };
+
   const queryKey = useMemo(() => ["reminders", user?.id], [user?.id]);
   const cacheKey = user?.id ? `reminders:${user.id}` : "";
 
-  const normalizeReminders = useCallback((data: Reminder[]) => {
+  const normalizeReminders = useCallback((data: Reminder[]): Reminder[] => {
     const now = new Date();
     return data.map((r) => {
       if (r.status === "pending" || r.status === "snoozed") {
@@ -71,7 +83,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
     });
   }, []);
 
-  const fetchReminders = useCallback(async () => {
+  const fetchReminders = useCallback(async (): Promise<Reminder[]> => {
     if (!user?.id) return [] as Reminder[];
     const { data, error: err } = await supabase
       .from("reminders")
@@ -88,7 +100,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
     data: reminders = [],
     isPending,
     error,
-  } = useQuery({
+  } = useQuery<Reminder[], Error>({
     queryKey,
     queryFn: fetchReminders,
     enabled: !!user?.id,
@@ -111,15 +123,17 @@ export function useReminders(user: User | null): UseRemindersReturn {
     writeCache(cacheKey, reminders);
   }, [cacheKey, reminders, user?.id]);
 
-  const addMutation = useMutation({
-    mutationFn: async (payload: {
-      data: Omit<Reminder, "id" | "user_id" | "created_at"> & {
-        status?: Reminder["status"];
-      };
-      clientId: string;
-      createdAt: string;
-    }) => {
+  const addMutation = useMutation<
+    { offline: boolean; record: Reminder },
+    Error,
+    AddPayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (!user?.id) throw new Error("Not authenticated");
+
+      const resolvedStatus: Reminder["status"] =
+        payload.data.status ?? "pending";
 
       const record: Reminder = {
         id: payload.clientId,
@@ -131,7 +145,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
         reminder_time: payload.data.reminder_time,
         notification_enabled: payload.data.notification_enabled,
         repeat_type: payload.data.repeat_type,
-        status: payload.data.status || "pending",
+        status: resolvedStatus,
         created_at: payload.createdAt,
       };
 
@@ -151,6 +165,9 @@ export function useReminders(user: User | null): UseRemindersReturn {
           | Reminder[]
           | undefined) || [];
 
+      const optimisticStatus: Reminder["status"] =
+        payload.data.status ?? "pending";
+
       const optimistic: Reminder = {
         id: payload.clientId,
         user_id: user?.id || "",
@@ -161,7 +178,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
         reminder_time: payload.data.reminder_time,
         notification_enabled: payload.data.notification_enabled,
         repeat_type: payload.data.repeat_type,
-        status: payload.data.status || "pending",
+        status: optimisticStatus,
         created_at: payload.createdAt,
       };
 
@@ -190,8 +207,13 @@ export function useReminders(user: User | null): UseRemindersReturn {
     },
   });
 
-  const updateMutation = useMutation({
-    mutationFn: async (payload: { id: string; updates: Partial<Reminder> }) => {
+  const updateMutation = useMutation<
+    { offline: boolean },
+    Error,
+    UpdatePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await enqueueAction({ type: "reminders:update", payload });
         return { offline: true };
@@ -231,8 +253,13 @@ export function useReminders(user: User | null): UseRemindersReturn {
     },
   });
 
-  const deleteMutation = useMutation({
-    mutationFn: async (payload: { id: string }) => {
+  const deleteMutation = useMutation<
+    { offline: boolean },
+    Error,
+    DeletePayload,
+    MutationContext
+  >({
+    mutationFn: async (payload) => {
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         await enqueueAction({ type: "reminders:delete", payload });
         return { offline: true };
@@ -274,6 +301,8 @@ export function useReminders(user: User | null): UseRemindersReturn {
     if (!user?.id) return { data: null, error: "Not authenticated" };
     const clientId = createId();
     const createdAt = new Date().toISOString();
+    const resolvedStatus: Reminder["status"] =
+      reminderData.status ?? "pending";
     try {
       await addMutation.mutateAsync({
         data: reminderData,
@@ -291,7 +320,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
           reminder_time: reminderData.reminder_time,
           notification_enabled: reminderData.notification_enabled,
           repeat_type: reminderData.repeat_type,
-          status: reminderData.status || "pending",
+          status: resolvedStatus,
           created_at: createdAt,
         },
         error: null,
@@ -381,7 +410,7 @@ export function useReminders(user: User | null): UseRemindersReturn {
     const rate = total > 0 ? Math.round((completed / total) * 100) : 0;
 
     // Calculate Streak (completed consecutive days)
-    const completedDates = [
+    const completedDates: string[] = [
       ...new Set(
         reminders
           .filter((r) => r.status === "completed")
