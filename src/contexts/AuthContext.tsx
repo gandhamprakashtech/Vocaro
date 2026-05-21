@@ -3,6 +3,7 @@ import {
   useContext,
   useEffect,
   useState,
+  useRef,
   type ReactNode,
 } from "react";
 import type { User } from "@supabase/supabase-js";
@@ -29,6 +30,33 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const USER_CACHE_KEY = "wordvault:user";
+
+function readCachedUser(): User | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(USER_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as User;
+    return parsed?.id ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistUser(user: User | null) {
+  if (typeof window === "undefined") return;
+  try {
+    if (user) {
+      window.localStorage.setItem(USER_CACHE_KEY, JSON.stringify(user));
+    } else {
+      window.localStorage.removeItem(USER_CACHE_KEY);
+    }
+  } catch {
+    // Ignore storage failures (private mode or blocked storage).
+  }
+}
+
 async function fetchProfile(userId: string): Promise<UserProfile | null> {
   const { data } = await supabase
     .from("profiles")
@@ -39,9 +67,10 @@ async function fetchProfile(userId: string): Promise<UserProfile | null> {
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const cachedUserRef = useRef<User | null>(readCachedUser());
+  const [user, setUser] = useState<User | null>(cachedUserRef.current);
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => !cachedUserRef.current);
 
   const refreshProfile = async () => {
     if (!user) {
@@ -62,14 +91,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
         const u = session?.user ?? null;
         setUser(u);
+        persistUser(u);
+        setLoading(false);
         if (u) {
-          const p = await fetchProfile(u.id);
-          if (active) setProfile(p);
+          fetchProfile(u.id)
+            .then((p) => {
+              if (active) setProfile(p);
+            })
+            .catch((err) => {
+              console.error("Error fetching profile on init:", err);
+            });
+        } else {
+          setProfile(null);
         }
       } catch (err) {
         console.error("Error initializing auth session:", err);
-      } finally {
-        setLoading(false);
+        if (active) setLoading(false);
       }
     }
 
@@ -86,6 +123,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const u = session?.user ?? null;
       if (!active) return;
       setUser(u);
+      persistUser(u);
       if (u) {
         try {
           const p = await fetchProfile(u.id);
@@ -96,6 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } else {
         setProfile(null);
       }
+      setLoading(false);
     });
 
     return () => {
@@ -159,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const signOut = async () => {
     await supabase.auth.signOut();
+    persistUser(null);
   };
 
   return (

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import type { User } from "@supabase/supabase-js";
 import { supabase } from "../services/supabase.ts";
@@ -58,6 +58,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
 
   const queryKey = useMemo(() => ["vocabulary", user?.id], [user?.id]);
   const cacheKey = user?.id ? `vocabulary:${user.id}` : "";
+  const [isBootstrapped, setIsBootstrapped] = useState(() => !user?.id);
 
   const fetchWords = useCallback(async () => {
     if (!user?.id) return [] as VocabularyWord[];
@@ -81,16 +82,30 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
   });
 
   useEffect(() => {
+    setIsBootstrapped(!user?.id);
+  }, [user?.id]);
+
+  useEffect(() => {
     if (!user?.id) return;
     let active = true;
     readCache<VocabularyWord[]>(cacheKey).then((cached) => {
-      if (!active || !cached) return;
-      queryClient.setQueryData(queryKey, cached);
+      if (!active) return;
+      if (cached) {
+        queryClient.setQueryData(queryKey, cached);
+      }
+      setIsBootstrapped(true);
     });
     return () => {
       active = false;
     };
   }, [cacheKey, queryKey, user?.id]);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    if (!isPending || error) {
+      setIsBootstrapped(true);
+    }
+  }, [user?.id, isPending, error]);
 
   useEffect(() => {
     if (!user?.id) return;
@@ -329,7 +344,7 @@ export function useVocabulary(user: User | null): UseVocabularyReturn {
 
   return {
     words,
-    loading: isPending,
+    loading: !isBootstrapped,
     error: error instanceof Error ? error.message : null,
     addWord,
     updateWord,
