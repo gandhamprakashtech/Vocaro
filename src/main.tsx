@@ -26,12 +26,21 @@ createRoot(document.getElementById("app")!).render(
 );
 
 // Auto-reload the application when a new PWA version is pushed
-if ("serviceWorker" in navigator) {
+if (import.meta.env.PROD && "serviceWorker" in navigator) {
+  const reloadFlagKey = "wordvault:sw-reload";
   let refreshing = false;
+
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (!refreshing) {
-      refreshing = true;
-      window.location.reload();
+    if (refreshing) return;
+
+    try {
+      if (sessionStorage.getItem(reloadFlagKey)) return;
+      sessionStorage.setItem(reloadFlagKey, "1");
+    } catch {
+      // If storage is unavailable, proceed with a single reload per page load.
     }
+
+    refreshing = true;
+    window.location.reload();
   });
 }
